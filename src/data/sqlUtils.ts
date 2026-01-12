@@ -1,7 +1,8 @@
 /**
  * Common SQL utility functions
  *
- * Shared helpers for SQL query manipulation used by autoTimeFilter module.
+ * Shared helpers for SQL query manipulation used by autoTimeFilter,
+ * autoLogsLimit, and sqlModifier modules.
  */
 
 /**

@@ -47,6 +47,7 @@ import { pluginVersion } from 'utils/version';
 import { AdHocFilter } from './adHocFilter';
 import { injectLimit } from './autoLogsLimit';
 import { injectTimeFilter } from './autoTimeFilter';
+import { buildContextQuerySql } from './sqlModifier';
 import {
   DEFAULT_LOGS_ALIAS,
   getIntervalInfo,
@@ -510,6 +511,27 @@ export class Datasource
    */
   getDefaultLogsLimit(): number {
     return this.settings.jsonData.logs?.defaultLogsLimit ?? DEFAULT_LOGS_LIMIT;
+  }
+
+  /**
+   * Get the configured time column for logs.
+   * Used for SQL mode log context queries.
+   */
+  getDefaultLogsTimeColumn(): string | undefined {
+    const logsConfig = this.settings.jsonData.logs;
+    if (!logsConfig) {
+      return undefined;
+    }
+
+    // Check OTEL config first
+    if (logsConfig.otelEnabled && logsConfig.otelVersion) {
+      const otelConfig = otel.getVersion(logsConfig.otelVersion);
+      if (otelConfig) {
+        return otelConfig.logColumnMap.get(ColumnHint.Time);
+      }
+    }
+
+    return logsConfig.timeColumn;
   }
 
   getDefaultTraceDatabase(): string | undefined {
@@ -1237,6 +1259,7 @@ export class Datasource
    * Typically this will be a single service, or container/pod in docker/k8s.
    *
    * If no context columns can be matched from the selected data frame, then the query is not run.
+   * Supports both Builder mode and SQL mode.
    */
   async getLogRowContext(
     row: LogRowModel,
@@ -1248,13 +1271,19 @@ export class Datasource
       throw new Error('Missing query for log context');
     } else if (!options || !options.direction || options.limit === undefined) {
       throw new Error('Missing log context options for query');
-    } else if (query.editorType === EditorType.SQL || !query.builderOptions) {
-      throw new Error('Log context feature only works for builder queries');
     }
 
     const contextQuery = cloneDeep(query);
     contextQuery.refId = '';
-    const builderOptions = contextQuery.builderOptions;
+
+    // SQL mode handling
+    if (query.editorType === EditorType.SQL || !query.builderOptions) {
+      return this.getLogRowContextForSqlMode(row, options, contextQuery as CHSqlQuery);
+    }
+
+    // Builder mode handling
+    const builderQuery = contextQuery as CHBuilderQuery;
+    const builderOptions = builderQuery.builderOptions;
     builderOptions.limit = options.limit;
 
     if (!getColumnByHint(builderOptions, ColumnHint.Time)) {
@@ -1303,6 +1332,59 @@ export class Datasource
     } as DataQueryRequest<CHQuery>;
 
     return await firstValueFrom(this.query(req));
+  }
+
+  /**
+   * Handles log row context for SQL mode queries.
+   * Modifies the raw SQL to add time filter, context filters, order by, and limit.
+   */
+  private async getLogRowContextForSqlMode(
+    row: LogRowModel,
+    options: LogRowContextOptions,
+    query: CHSqlQuery
+  ): Promise<DataQueryResponse> {
+    // Try to get time column from: 1) datasource config, 2) DataFrame time field
+    const configuredTimeColumn = this.getDefaultLogsTimeColumn();
+    const detectedTimeColumn = this.detectTimeColumnFromRow(row);
+    const timeColumn = configuredTimeColumn || detectedTimeColumn;
+
+    if (!timeColumn) {
+      throw new Error(
+        'Unable to detect time column. Please configure it in datasource settings under Logs > Columns > Time column.'
+      );
+    }
+
+    const contextColumns = this.getLogContextColumnsFromLogRow(row);
+    // For SQL mode, context columns are optional - we can still scroll without them
+
+    const direction = options.direction === LogRowContextQueryDirection.Forward ? 'forward' : 'backward';
+    const timestamp = `fromUnixTimestamp64Nano(${row.timeEpochNs})`;
+
+    const contextFilters = contextColumns.map((c) => ({
+      column: c.name,
+      value: c.value,
+    }));
+
+    query.rawSql = buildContextQuerySql(query.rawSql, timeColumn, timestamp, direction, options.limit!, contextFilters);
+
+    const req = {
+      targets: [query],
+    } as DataQueryRequest<CHQuery>;
+
+    return await firstValueFrom(this.query(req));
+  }
+
+  /**
+   * Detects the time column name from the LogRowModel's dataFrame.
+   * Looks for the first field with FieldType.time.
+   */
+  private detectTimeColumnFromRow(row: LogRowModel): string | undefined {
+    if (!row.dataFrame) {
+      return undefined;
+    }
+
+    const timeField = row.dataFrame.fields.find((f) => f.type === FieldType.time);
+    return timeField?.name;
   }
 
   /**
