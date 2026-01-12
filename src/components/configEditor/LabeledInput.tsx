@@ -8,10 +8,11 @@ interface LabeledInputProps {
   disabled?: boolean;
   value: string;
   onChange: (value: string) => void;
+  type?: string;
 }
 
 export function LabeledInput(props: LabeledInputProps) {
-  const { label, tooltip, placeholder, disabled, value, onChange } = props;
+  const { label, tooltip, placeholder, disabled, value, onChange, type } = props;
 
   return (
     <div className="gf-form">
@@ -24,6 +25,7 @@ export function LabeledInput(props: LabeledInputProps) {
         value={value}
         onChange={(e) => onChange(e.currentTarget.value)}
         placeholder={placeholder}
+        type={type}
       />
     </div>
   );

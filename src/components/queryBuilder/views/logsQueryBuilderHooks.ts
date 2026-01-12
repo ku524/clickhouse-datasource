@@ -61,6 +61,7 @@ export const useLogDefaultsOnMount = (
         database: defaultDb,
         table: defaultTable || builderOptions.table,
         columns: nextColumns,
+        limit: datasource.getDefaultLogsLimit(),
         meta: {
           otelEnabled: Boolean(otelVersion),
           otelVersion,

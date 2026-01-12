@@ -27,6 +27,7 @@ describe('useLogDefaultsOnMount', () => {
       database: expect.anything(),
       table: expect.anything(),
       columns: [{ name: 'timestamp', hint: ColumnHint.Time }],
+      limit: expect.any(Number),
       meta: {
         otelEnabled: expect.anything(),
         otelVersion: undefined,
@@ -53,6 +54,7 @@ describe('useLogDefaultsOnMount', () => {
       database: expect.anything(),
       table: expect.anything(),
       columns: [{ name: 'timestamp', hint: ColumnHint.Time }, { name: 'SampleColumn' }],
+      limit: expect.any(Number),
       meta: {
         otelEnabled: expect.anything(),
         otelVersion: undefined,
