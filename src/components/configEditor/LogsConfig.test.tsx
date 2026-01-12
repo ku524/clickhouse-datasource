@@ -19,6 +19,7 @@ describe('LogsConfig', () => {
         onMessageColumnChange={() => {}}
         onSelectContextColumnsChange={() => {}}
         onContextColumnsChange={() => {}}
+        onDefaultLogsLimitChange={() => {}}
       />
     );
     expect(result.container.firstChild).not.toBeNull();
@@ -38,6 +39,7 @@ describe('LogsConfig', () => {
         onMessageColumnChange={() => {}}
         onSelectContextColumnsChange={() => {}}
         onContextColumnsChange={() => {}}
+        onDefaultLogsLimitChange={() => {}}
       />
     );
     expect(result.container.firstChild).not.toBeNull();
@@ -64,6 +66,7 @@ describe('LogsConfig', () => {
         onMessageColumnChange={() => {}}
         onSelectContextColumnsChange={() => {}}
         onContextColumnsChange={() => {}}
+        onDefaultLogsLimitChange={() => {}}
       />
     );
     expect(result.container.firstChild).not.toBeNull();
@@ -118,6 +121,7 @@ describe('LogsConfig', () => {
         onMessageColumnChange={() => {}}
         onSelectContextColumnsChange={() => {}}
         onContextColumnsChange={() => {}}
+        onDefaultLogsLimitChange={() => {}}
       />
     );
     expect(result.container.firstChild).not.toBeNull();
@@ -144,6 +148,7 @@ describe('LogsConfig', () => {
         onMessageColumnChange={() => {}}
         onSelectContextColumnsChange={() => {}}
         onContextColumnsChange={() => {}}
+        onDefaultLogsLimitChange={() => {}}
       />
     );
     expect(result.container.firstChild).not.toBeNull();
@@ -172,6 +177,7 @@ describe('LogsConfig', () => {
         onMessageColumnChange={() => {}}
         onSelectContextColumnsChange={() => {}}
         onContextColumnsChange={() => {}}
+        onDefaultLogsLimitChange={() => {}}
       />
     );
     expect(result.container.firstChild).not.toBeNull();
@@ -200,6 +206,7 @@ describe('LogsConfig', () => {
         onMessageColumnChange={onMessageColumnChange}
         onSelectContextColumnsChange={() => {}}
         onContextColumnsChange={() => {}}
+        onDefaultLogsLimitChange={() => {}}
       />
     );
     expect(result.container.firstChild).not.toBeNull();

@@ -139,7 +139,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
       },
     });
   };
-  const onLogsConfigChange = (key: keyof CHLogsConfig, value: string | boolean | string[]) => {
+  const onLogsConfigChange = (key: keyof CHLogsConfig, value: string | boolean | string[] | number) => {
     onOptionsChange({
       ...options,
       jsonData: {
@@ -525,6 +525,10 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
           }}
           onShowTableSchemaChange={(v) => {
             onLogsConfigChange('showTableSchema', v);
+          }}
+          onDefaultLogsLimitChange={(v) => {
+            trackingV1.trackClickhouseConfigV1LogsConfig({ defaultLogsLimit: v });
+            onLogsConfigChange('defaultLogsLimit', v);
           }}
         />
 

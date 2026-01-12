@@ -299,6 +299,12 @@ export default {
             placeholder: 'Column name (enter key to add)',
           },
         },
+        defaultLogsLimit: {
+          label: 'Default logs limit',
+          tooltip:
+            'Default LIMIT value for new log queries. Set to 0 to fetch all rows. This enables efficient infinite scrolling in the logs panel.',
+          placeholder: '1000',
+        },
       },
     },
     EditorTypeSwitcher: {

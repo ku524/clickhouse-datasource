@@ -2,6 +2,12 @@ import { DataSourceJsonData, KeyValue } from '@grafana/data';
 import otel, { defaultLogsTable, defaultTraceTable } from 'otel';
 import { TimeUnit } from './queryBuilder';
 
+/**
+ * Default LIMIT value for logs queries when not explicitly configured.
+ * Used in datasource settings and query execution.
+ */
+export const DEFAULT_LOGS_LIMIT = 1000;
+
 export interface CHConfig extends DataSourceJsonData {
   /**
    * The version of the plugin this config was saved with
@@ -85,6 +91,12 @@ export interface CHLogsConfig {
    * even if they are not selected in the query.
    */
   showTableSchema?: boolean;
+
+  /**
+   * Default LIMIT value for new log queries.
+   * Set to 0 to disable limit (fetch all rows).
+   */
+  defaultLogsLimit?: number;
 }
 
 export interface CHAutoTimeFilterConfig {
@@ -143,6 +155,7 @@ export const defaultCHAdditionalSettingsConfig: Partial<CHConfig> = {
     otelVersion: otel.getLatestVersion().version,
     selectContextColumns: true,
     contextColumns: [],
+    defaultLogsLimit: DEFAULT_LOGS_LIMIT,
   },
   traces: {
     defaultTable: defaultTraceTable,

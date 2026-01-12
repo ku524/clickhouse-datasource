@@ -63,6 +63,7 @@ export const trackClickhouseConfigV1LogsConfig = (props: {
   messageColumn?: string;
   selectContextColumns?: boolean;
   contextColumns?: string[];
+  defaultLogsLimit?: number;
 }) => {
   reportInteraction('clickhouse_config_v1_logs_config', props);
 };

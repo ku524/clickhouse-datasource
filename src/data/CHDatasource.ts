@@ -26,7 +26,7 @@ import { cloneDeep, isEmpty, isString } from 'lodash';
 import otel from 'otel';
 import { createElement as createReactElement, ReactNode } from 'react';
 import { firstValueFrom, from, map, mergeMap, Observable } from 'rxjs';
-import { CHConfig } from 'types/config';
+import { CHConfig, DEFAULT_LOGS_LIMIT } from 'types/config';
 import {
   AggregateColumn,
   AggregateType,
@@ -45,6 +45,7 @@ import {
 import { CHBuilderQuery, CHQuery, CHSqlQuery, EditorType } from 'types/sql';
 import { pluginVersion } from 'utils/version';
 import { AdHocFilter } from './adHocFilter';
+import { injectLimit } from './autoLogsLimit';
 import { injectTimeFilter } from './autoTimeFilter';
 import {
   DEFAULT_LOGS_ALIAS,
@@ -503,6 +504,14 @@ export class Datasource
     return logConfig?.otelEnabled ? logConfig.otelVersion || undefined : undefined;
   }
 
+  /**
+   * Get default LIMIT value for new log queries.
+   * Returns DEFAULT_LOGS_LIMIT if not configured.
+   */
+  getDefaultLogsLimit(): number {
+    return this.settings.jsonData.logs?.defaultLogsLimit ?? DEFAULT_LOGS_LIMIT;
+  }
+
   getDefaultTraceDatabase(): string | undefined {
     return this.settings.jsonData.traces?.defaultDatabase;
   }
@@ -867,6 +876,18 @@ export class Datasource
               timeColumn: autoTimeFilterConfig.timeColumn,
               timeColumnType: autoTimeFilterConfig.timeColumnType || 'DateTime',
             });
+          }
+        }
+
+        // Auto limit injection for Logs and Table queries without explicit LIMIT
+        const defaultLogsLimit = this.getDefaultLogsLimit();
+        const queryType =
+          t.editorType === EditorType.SQL
+            ? (t as CHSqlQuery).queryType
+            : (t as CHBuilderQuery).builderOptions?.queryType;
+        if (defaultLogsLimit > 0 && rawSql) {
+          if (queryType === QueryType.Logs || queryType === QueryType.Table) {
+            rawSql = injectLimit(rawSql, defaultLogsLimit);
           }
         }
 

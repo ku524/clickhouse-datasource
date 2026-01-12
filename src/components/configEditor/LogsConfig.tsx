@@ -22,6 +22,7 @@ interface LogsConfigProps {
   onSelectContextColumnsChange: (v: boolean) => void;
   onContextColumnsChange: (v: string[]) => void;
   onShowTableSchemaChange?: (v: boolean) => void;
+  onDefaultLogsLimitChange: (v: number) => void;
 }
 
 export const LogsConfig = (props: LogsConfigProps) => {
@@ -36,6 +37,7 @@ export const LogsConfig = (props: LogsConfigProps) => {
     onSelectContextColumnsChange,
     onContextColumnsChange,
     onShowTableSchemaChange,
+    onDefaultLogsLimitChange,
   } = props;
   let {
     defaultDatabase,
@@ -48,6 +50,7 @@ export const LogsConfig = (props: LogsConfigProps) => {
     selectContextColumns,
     contextColumns,
     showTableSchema,
+    defaultLogsLimit,
   } = props.logsConfig || {};
   const labels = allLabels.components.Config.LogsConfig;
 
@@ -140,6 +143,15 @@ export const LogsConfig = (props: LogsConfigProps) => {
           />
         </div>
       </ConfigSubSection>
+      <br />
+      <LabeledInput
+        label={labels.defaultLogsLimit.label}
+        placeholder={labels.defaultLogsLimit.placeholder}
+        tooltip={labels.defaultLogsLimit.tooltip}
+        value={defaultLogsLimit?.toString() || ''}
+        onChange={(v) => onDefaultLogsLimitChange(parseInt(v, 10) || 0)}
+        type="number"
+      />
       {onShowTableSchemaChange && (
         <div style={{ marginTop: 16 }}>
           <ConfigSubSection

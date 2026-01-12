@@ -63,7 +63,7 @@ export const AdditionalSettingsSection = (props: Props) => {
 
   const [customSettings, setCustomSettings] = useState(jsonData.customSettings || []);
 
-  const onLogsConfigChange = (key: keyof CHLogsConfig, value: string | boolean | string[]) => {
+  const onLogsConfigChange = (key: keyof CHLogsConfig, value: string | boolean | string[] | number) => {
     onOptionsChange({
       ...options,
       jsonData: {
@@ -76,7 +76,7 @@ export const AdditionalSettingsSection = (props: Props) => {
     });
   };
 
-  const onUpdateLogsConfig = (key: keyof CHLogsConfig, value: string | boolean | string[]) => {
+  const onUpdateLogsConfig = (key: keyof CHLogsConfig, value: string | boolean | string[] | number) => {
     trackClickhouseConfigV2LogsConfig({ [key]: value });
     onLogsConfigChange(key, value);
   };
@@ -253,6 +253,7 @@ export const AdditionalSettingsSection = (props: Props) => {
           onMessageColumnChange={(c) => onUpdateLogsConfig('messageColumn', c)}
           onSelectContextColumnsChange={(c) => onUpdateLogsConfig('selectContextColumns', c)}
           onContextColumnsChange={(c) => onUpdateLogsConfig('contextColumns', c)}
+          onDefaultLogsLimitChange={(v) => onUpdateLogsConfig('defaultLogsLimit', v)}
         />
 
         <Divider />
