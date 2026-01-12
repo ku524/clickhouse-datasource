@@ -47,7 +47,7 @@ import { pluginVersion } from 'utils/version';
 import { AdHocFilter } from './adHocFilter';
 import { injectLimit } from './autoLogsLimit';
 import { injectTimeFilter } from './autoTimeFilter';
-import { buildContextQuerySql } from './sqlModifier';
+import { buildContextQuerySql, injectOrderBy } from './sqlModifier';
 import {
   DEFAULT_LOGS_ALIAS,
   getIntervalInfo,
@@ -910,6 +910,17 @@ export class Datasource
         if (defaultLogsLimit > 0 && rawSql) {
           if (queryType === QueryType.Logs || queryType === QueryType.Table) {
             rawSql = injectLimit(rawSql, defaultLogsLimit);
+          }
+        }
+
+        // Auto ORDER BY injection for Logs queries with direction option (for infinite scrolling)
+        if (rawSql && queryType === QueryType.Logs && t.editorType === EditorType.SQL) {
+          const sqlQuery = t as CHSqlQuery;
+          const direction = sqlQuery.direction;
+          const timeColumn = this.getDefaultLogsTimeColumn();
+          if (direction && timeColumn) {
+            const orderDirection = direction === 'forward' ? 'ASC' : 'DESC';
+            rawSql = injectOrderBy(rawSql, timeColumn, orderDirection);
           }
         }
 

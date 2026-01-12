@@ -2,6 +2,12 @@ import { DataQuery } from '@grafana/schema';
 import { BuilderMode, QueryType, QueryBuilderOptions } from './queryBuilder';
 
 /**
+ * Direction for logs query sorting.
+ * Affects ORDER BY clause injection for infinite scrolling support.
+ */
+export type LogsQueryDirection = 'forward' | 'backward';
+
+/**
  * EditorType determines the query editor type.
  */
 export enum EditorType {
@@ -31,6 +37,12 @@ export interface CHSqlQuery extends CHQueryBase {
     builderOptions?: QueryBuilderOptions;
   };
   expand?: boolean;
+  /**
+   * Direction for logs query sorting. Only used when queryType is Logs.
+   * 'backward' (default): newest first (ORDER BY time DESC)
+   * 'forward': oldest first (ORDER BY time ASC)
+   */
+  direction?: LogsQueryDirection;
 }
 
 export interface CHBuilderQuery extends CHQueryBase {
