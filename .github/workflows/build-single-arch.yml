@@ -1,0 +1,65 @@
+name: Build Single Architecture Image
+
+on:
+  workflow_call:
+    inputs:
+      architecture:
+        description: 'Target architecture (amd64 or arm64)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: 314716043882.dkr.ecr.ap-northeast-2.amazonaws.com
+  REPO: infra/grafana
+  AWS_REGION: "ap-northeast-2"
+
+jobs:
+  build:
+    runs-on:
+      labels: mesg-use1-${{ inputs.architecture }}
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Configure AWS credentials
+      uses: sendbird/shared-github-actions/setup-aws-credential@main
+      with:
+        aws_id_role_arn: ${{ vars.AWS_ID_ROLE_ARN }}
+        aws_role_arn: ${{ vars.AWS_OPS_ROLE_ARN }}
+        aws_region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: Build and push single architecture image
+      env:
+        ARCHITECTURE: ${{ inputs.architecture }}
+        REGISTRY: ${{ env.REGISTRY }}
+        REPO: ${{ env.REPO }}
+        VERSION: ${{ steps.get_version.outputs.VERSION }}
+      run: |
+        # Build Grafana image with custom plugin for current architecture
+        docker buildx build \
+          --file Dockerfile.custom \
+          --platform "linux/$ARCHITECTURE" \
+          --tag "$REGISTRY/$REPO:$VERSION-$ARCHITECTURE" \
+          --push \
+          .
+        # Output digest for manifest creation
+        echo "Built and pushed $ARCHITECTURE image:"
+        echo "  $REGISTRY/$REPO:$VERSION-$ARCHITECTURE"

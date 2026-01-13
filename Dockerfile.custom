@@ -1,0 +1,74 @@
+# Multi-stage build for custom ClickHouse datasource plugin
+
+# Stage 1: Backend build
+FROM golang:1.25-alpine AS backend-builder
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /build
+
+# Set Go proxy with fallback for network reliability
+ENV GOPROXY=https://goproxy.io,https://proxy.golang.org,direct
+ENV GOSUMDB=sum.golang.org
+
+# Copy Go modules first for better caching
+COPY go.mod go.sum Magefile.go ./
+RUN for i in 1 2 3; do go mod download && break || sleep 10; done
+
+# Install mage
+RUN go install github.com/magefile/mage@latest
+
+# Copy backend source and plugin metadata
+COPY pkg ./pkg
+COPY src/plugin.json ./src/plugin.json
+
+# Build for Linux platforms (commonly used in K8s)
+RUN mage build:linux build:linuxARM64
+
+# Stage 2: Frontend build
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /build
+
+# Copy package files first for better caching
+COPY package*.json ./
+RUN npm ci
+
+# Copy frontend source
+COPY . .
+
+# Build frontend
+RUN npm run build
+
+# Stage 3: Final image
+FROM grafana/grafana:12.3.1
+
+USER root
+
+# Use a path that won't be overridden by volume mounts
+WORKDIR /etc/grafana-clickhouse-datasource
+
+# Copy backend binaries
+COPY --from=backend-builder /build/dist/gpx_clickhouse_linux_amd64 ./
+COPY --from=backend-builder /build/dist/gpx_clickhouse_linux_arm64 ./
+
+# Copy frontend build output
+COPY --from=frontend-builder /build/dist ./
+
+# Copy entrypoint wrapper script
+COPY entrypoint-wrapper.sh /entrypoint-wrapper.sh
+
+# Set permissions
+RUN chmod +x gpx_clickhouse_linux_* && \
+    chmod +x /entrypoint-wrapper.sh && \
+    chown -R 472:0 /etc/grafana-clickhouse-datasource
+
+USER 472
+
+# Override entrypoint
+ENTRYPOINT ["/entrypoint-wrapper.sh"]
+
+# Add metadata
+LABEL maintainer="mark.yeon@sendbird.com"
+LABEL description="Custom ClickHouse datasource plugin for Grafana"
+LABEL version="4.12.0-custom"

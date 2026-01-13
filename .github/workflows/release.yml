@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags:
+    - 'v*'
+    - 'dev-*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+env:
+  REGISTRY: 314716043882.dkr.ecr.ap-northeast-2.amazonaws.com
+  REPO: infra/grafana
+  AWS_REGION: "ap-northeast-2"
+
+jobs:
+  build-images:
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [amd64, arm64]
+    uses: ./.github/workflows/build-single-arch.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+
+  merge-manifests:
+    needs: [build-images]
+    uses: ./.github/workflows/merge-manifests.yml

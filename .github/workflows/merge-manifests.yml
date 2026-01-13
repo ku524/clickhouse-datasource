@@ -1,0 +1,53 @@
+name: Merge Multi-Arch Manifests
+
+on:
+  workflow_call:
+
+env:
+  REGISTRY: 314716043882.dkr.ecr.ap-northeast-2.amazonaws.com
+  REPO: infra/grafana
+  AWS_REGION: "ap-northeast-2"
+
+jobs:
+  merge:
+    runs-on:
+      labels: mesg-use1-amd64
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+
+    - name: Configure AWS credentials
+      uses: sendbird/shared-github-actions/setup-aws-credential@main
+      with:
+        aws_id_role_arn: ${{ vars.AWS_ID_ROLE_ARN }}
+        aws_role_arn: ${{ vars.AWS_OPS_ROLE_ARN }}
+        aws_region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: Create and push multi-arch manifests
+      run: |
+        # Create multi-arch manifest for version tag
+        docker buildx imagetools create \
+          --tag ${{ env.REGISTRY }}/${{ env.REPO }}:${{ steps.get_version.outputs.VERSION }} \
+          ${{ env.REGISTRY }}/${{ env.REPO }}:${{ steps.get_version.outputs.VERSION }}-amd64 \
+          ${{ env.REGISTRY }}/${{ env.REPO }}:${{ steps.get_version.outputs.VERSION }}-arm64
+
+        echo "Multi-arch manifest created and pushed:"
+        echo "  ${{ env.REGISTRY }}/${{ env.REPO }}:${{ steps.get_version.outputs.VERSION }}"
+
+    - name: Clean up temporary architecture-specific tags
+      run: |
+        # Note: ECR doesn't support tag deletion via Docker CLI
+        # Architecture-specific tags will remain but can be managed via ECR lifecycle policies
+        echo "Temporary architecture-specific tags can be cleaned up via ECR lifecycle policies:"
+        echo "  ${{ env.REGISTRY }}/${{ env.REPO }}:${{ steps.get_version.outputs.VERSION }}-amd64"
+        echo "  ${{ env.REGISTRY }}/${{ env.REPO }}:${{ steps.get_version.outputs.VERSION }}-arm64"
