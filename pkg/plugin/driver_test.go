@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
@@ -88,6 +89,149 @@ func TestMergeOpenTelemetryLabels(t *testing.T) {
 		assert.Equal(t, 2, len(frame.Fields))
 		assert.Equal(t, "ResourceAttributes", frame.Fields[0].Name)
 		assert.Equal(t, "ScopeAttributes", frame.Fields[1].Name)
+	})
+}
+
+func TestMergeColumnsToLabels(t *testing.T) {
+	t.Run("MergesNonCoreColumnsToLabels", func(t *testing.T) {
+		frame := &data.Frame{
+			Fields: []*data.Field{
+				data.NewField("timestamp", nil, []time.Time{time.Now()}),
+				data.NewField("body", nil, []string{"log message"}),
+				data.NewField("service_name", nil, []string{"my-service"}),
+				data.NewField("pod", nil, []string{"pod-123"}),
+				data.NewField("level", nil, []string{"info"}),
+			},
+		}
+
+		err := mergeColumnsToLabels(frame)
+		assert.NoError(t, err)
+		assert.Equal(t, 3, len(frame.Fields)) // timestamp, body, labels
+
+		// Verify core fields are preserved
+		assert.Equal(t, "timestamp", frame.Fields[0].Name)
+		assert.Equal(t, "body", frame.Fields[1].Name)
+		assert.Equal(t, "labels", frame.Fields[2].Name)
+
+		// Verify labels contain merged fields
+		labelsVal := frame.Fields[2].At(0).(json.RawMessage)
+		var labels map[string]any
+		err = json.Unmarshal(labelsVal, &labels)
+		assert.NoError(t, err)
+		assert.Equal(t, "my-service", labels["service_name"])
+		assert.Equal(t, "pod-123", labels["pod"])
+		assert.Equal(t, "info", labels["level"])
+	})
+
+	t.Run("MergesWithExistingLabels", func(t *testing.T) {
+		existingLabels := json.RawMessage(`{"existing_key": "existing_value"}`)
+		frame := &data.Frame{
+			Fields: []*data.Field{
+				data.NewField("timestamp", nil, []time.Time{time.Now()}),
+				data.NewField("body", nil, []string{"log message"}),
+				data.NewField("labels", nil, []json.RawMessage{existingLabels}),
+				data.NewField("new_field", nil, []string{"new_value"}),
+			},
+		}
+
+		err := mergeColumnsToLabels(frame)
+		assert.NoError(t, err)
+		assert.Equal(t, 3, len(frame.Fields))
+
+		// Verify labels contain both existing and new fields
+		labelsVal := frame.Fields[2].At(0).(json.RawMessage)
+		var labels map[string]any
+		err = json.Unmarshal(labelsVal, &labels)
+		assert.NoError(t, err)
+		assert.Equal(t, "existing_value", labels["existing_key"])
+		assert.Equal(t, "new_value", labels["new_field"])
+	})
+
+	t.Run("NoFieldsToMerge", func(t *testing.T) {
+		frame := &data.Frame{
+			Fields: []*data.Field{
+				data.NewField("timestamp", nil, []time.Time{time.Now()}),
+				data.NewField("body", nil, []string{"log message"}),
+			},
+		}
+
+		err := mergeColumnsToLabels(frame)
+		assert.NoError(t, err)
+		assert.Equal(t, 2, len(frame.Fields)) // No labels field added
+	})
+
+	t.Run("EmptyFrame", func(t *testing.T) {
+		frame := &data.Frame{
+			Fields: []*data.Field{},
+		}
+
+		err := mergeColumnsToLabels(frame)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, len(frame.Fields))
+	})
+
+	t.Run("HandlesVariousFieldTypes", func(t *testing.T) {
+		now := time.Now()
+		frame := &data.Frame{
+			Fields: []*data.Field{
+				data.NewField("timestamp", nil, []time.Time{now}),
+				data.NewField("body", nil, []string{"log message"}),
+				data.NewField("string_field", nil, []string{"string_value"}),
+				data.NewField("int_field", nil, []int64{42}),
+				data.NewField("float_field", nil, []float64{3.14}),
+				data.NewField("bool_field", nil, []bool{true}),
+			},
+		}
+
+		err := mergeColumnsToLabels(frame)
+		assert.NoError(t, err)
+
+		labelsVal := frame.Fields[2].At(0).(json.RawMessage)
+		var labels map[string]any
+		err = json.Unmarshal(labelsVal, &labels)
+		assert.NoError(t, err)
+		assert.Equal(t, "string_value", labels["string_field"])
+		assert.Equal(t, "42", labels["int_field"])
+		assert.Equal(t, "3.14", labels["float_field"])
+		assert.Equal(t, "true", labels["bool_field"])
+	})
+}
+
+func TestFieldValueToString(t *testing.T) {
+	t.Run("String", func(t *testing.T) {
+		assert.Equal(t, "hello", fieldValueToString("hello"))
+	})
+
+	t.Run("StringPointer", func(t *testing.T) {
+		s := "hello"
+		assert.Equal(t, "hello", fieldValueToString(&s))
+	})
+
+	t.Run("NilStringPointer", func(t *testing.T) {
+		var s *string
+		assert.Equal(t, "", fieldValueToString(s))
+	})
+
+	t.Run("Int", func(t *testing.T) {
+		assert.Equal(t, "42", fieldValueToString(42))
+	})
+
+	t.Run("Float", func(t *testing.T) {
+		assert.Equal(t, "3.14", fieldValueToString(3.14))
+	})
+
+	t.Run("Bool", func(t *testing.T) {
+		assert.Equal(t, "true", fieldValueToString(true))
+	})
+
+	t.Run("Nil", func(t *testing.T) {
+		assert.Equal(t, "", fieldValueToString(nil))
+	})
+
+	t.Run("Time", func(t *testing.T) {
+		t1 := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+		result := fieldValueToString(t1)
+		assert.Contains(t, result, "2024-01-15")
 	})
 }
 

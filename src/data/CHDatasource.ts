@@ -1009,33 +1009,71 @@ export class Datasource
   }
 
   /**
-   * Appends schema fields to a data frame for columns not in selectedColumns.
+   * Merges schema columns into the labels field of a data frame.
+   * Columns not in selectedColumns are added to labels with "not queried (type)" values.
    * @mutates frame - Directly modifies frame.fields array
    */
-  private appendSchemaFieldsToFrame(frame: DataFrame, schema: TableColumn[], selectedColumns: Set<string>): void {
-    // Get existing field names from the frame to avoid duplicates
-    const existingFieldNames = new Set((frame.fields || []).map((f) => f.name));
-
-    // Filter out columns that are either selected or already exist in the frame
-    const availableColumns = schema.filter(
-      (col) => !selectedColumns.has(col.name) && !existingFieldNames.has(col.name)
-    );
-    if (availableColumns.length === 0) {
-      return;
-    }
-
+  private mergeSchemaToLabelsField(frame: DataFrame, schema: TableColumn[], selectedColumns: Set<string>): void {
     const rowCount = frame.length || frame.fields?.[0]?.values?.length || 0;
     if (rowCount === 0 || !frame.fields) {
       return;
     }
 
-    for (const col of availableColumns) {
-      frame.fields.push({
-        name: col.name,
-        type: FieldType.string,
-        config: {},
-        values: Array(rowCount).fill(`not queried (${col.type})`),
-      });
+    // Find existing labels field
+    const labelsFieldIndex = frame.fields.findIndex((f) => f.name === 'labels');
+    const labelsField = labelsFieldIndex >= 0 ? frame.fields[labelsFieldIndex] : null;
+
+    // Get columns already in labels (from backend mergeColumnsToLabels)
+    const existingLabelKeys = new Set<string>();
+    if (labelsField && labelsField.values?.length > 0) {
+      const firstLabels = labelsField.values[0];
+      if (firstLabels && typeof firstLabels === 'object') {
+        Object.keys(firstLabels).forEach((k) => existingLabelKeys.add(k));
+      }
+    }
+
+    // Filter schema columns: exclude selected columns, core fields, and already existing label keys
+    const coreFields = new Set(['timestamp', 'body', 'labels']);
+    const availableColumns = schema.filter(
+      (col) => !selectedColumns.has(col.name) && !coreFields.has(col.name) && !existingLabelKeys.has(col.name)
+    );
+
+    if (availableColumns.length === 0) {
+      return;
+    }
+
+    // Build new labels values
+    const newLabelsValues: Array<Record<string, string>> = [];
+    for (let i = 0; i < rowCount; i++) {
+      // Start with existing labels if present
+      let rowLabels: Record<string, string> = {};
+      if (labelsField && labelsField.values?.[i]) {
+        const existing = labelsField.values[i];
+        if (existing && typeof existing === 'object') {
+          rowLabels = { ...existing } as Record<string, string>;
+        }
+      }
+
+      // Add schema columns as "not queried" labels
+      for (const col of availableColumns) {
+        rowLabels[col.name] = `not queried (${col.type})`;
+      }
+
+      newLabelsValues.push(rowLabels);
+    }
+
+    // Update or create labels field
+    const newLabelsField = {
+      name: 'labels',
+      type: FieldType.other,
+      config: {},
+      values: newLabelsValues,
+    };
+
+    if (labelsFieldIndex >= 0) {
+      frame.fields[labelsFieldIndex] = newLabelsField;
+    } else {
+      frame.fields.push(newLabelsField);
     }
   }
 
@@ -1064,7 +1102,7 @@ export class Datasource
 
       try {
         const schema = await this.fetchColumnsFromTableCached(queryInfo.database, queryInfo.table);
-        this.appendSchemaFieldsToFrame(frame, schema, queryInfo.selectedColumns);
+        this.mergeSchemaToLabelsField(frame, schema, queryInfo.selectedColumns);
       } catch {
         // Schema fetch failed - silently skip metadata enrichment
         // This is non-critical; log panel will still display queried columns

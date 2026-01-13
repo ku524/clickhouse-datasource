@@ -381,7 +381,15 @@ func (h *Clickhouse) MutateResponse(ctx context.Context, res data.Frames) (data.
 				frame.Meta.Type = data.FrameTypeLogLines
 			}
 
+			// First, merge OpenTelemetry attributes into labels
 			err := mergeOpenTelemetryLabels(frame)
+			if err != nil {
+				return nil, err
+			}
+
+			// Then, merge remaining non-core columns into labels
+			// This allows SELECT timestamp, body, service_name, pod FROM ... to show service_name, pod as labels
+			err = mergeColumnsToLabels(frame)
 			if err != nil {
 				return nil, err
 			}
@@ -570,6 +578,141 @@ func mergeOpenTelemetryLabels(frame *data.Frame) error {
 	frame.Fields = filteredFields
 
 	return nil
+}
+
+// mergeColumnsToLabels merges non-core columns into the labels field for log visualization.
+// Core columns (timestamp, body) are preserved as separate fields, others become labels.
+// This function should be called after mergeOpenTelemetryLabels.
+func mergeColumnsToLabels(frame *data.Frame) error {
+	// Core fields that should remain as separate columns
+	coreFields := map[string]bool{
+		"timestamp": true,
+		"body":      true,
+		"labels":    true, // Don't merge the labels field itself
+	}
+
+	// Find fields to merge into labels
+	var fieldsToMerge []*data.Field
+	for _, field := range frame.Fields {
+		if !coreFields[field.Name] {
+			fieldsToMerge = append(fieldsToMerge, field)
+		}
+	}
+
+	if len(fieldsToMerge) == 0 {
+		return nil
+	}
+
+	rowLen, err := frame.RowLen()
+	if err != nil {
+		return err
+	}
+
+	if rowLen == 0 {
+		return nil
+	}
+
+	// Find existing labels field or prepare to create new one
+	var existingLabelsField *data.Field
+	var existingLabelsIdx int = -1
+	for i, field := range frame.Fields {
+		if field.Name == "labels" {
+			existingLabelsField = field
+			existingLabelsIdx = i
+			break
+		}
+	}
+
+	// Build labels values for each row
+	allLabelsValues := make([]map[string]any, rowLen)
+
+	// If existing labels field, parse its values first
+	if existingLabelsField != nil {
+		for j := 0; j < rowLen; j++ {
+			val := existingLabelsField.At(j)
+			if val != nil {
+				if jsonVal, ok := val.(json.RawMessage); ok && jsonVal != nil {
+					var valMap map[string]any
+					if err := json.Unmarshal(jsonVal, &valMap); err == nil {
+						allLabelsValues[j] = valMap
+					}
+				}
+			}
+			if allLabelsValues[j] == nil {
+				allLabelsValues[j] = make(map[string]any)
+			}
+		}
+	} else {
+		for j := 0; j < rowLen; j++ {
+			allLabelsValues[j] = make(map[string]any)
+		}
+	}
+
+	// Merge field values into labels
+	for _, field := range fieldsToMerge {
+		for j := 0; j < rowLen; j++ {
+			val := field.At(j)
+			if val != nil {
+				allLabelsValues[j][field.Name] = fieldValueToString(val)
+			}
+		}
+	}
+
+	// Convert to JSON
+	allLabelsValuesJSON := make([]json.RawMessage, rowLen)
+	for i, value := range allLabelsValues {
+		valueJSON, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		allLabelsValuesJSON[i] = valueJSON
+	}
+
+	newLabelsField := data.NewField("labels", make(data.Labels), allLabelsValuesJSON)
+
+	// Build filtered fields list (core fields only + new labels)
+	filteredFields := make([]*data.Field, 0)
+	for i, field := range frame.Fields {
+		if field.Name == "timestamp" || field.Name == "body" {
+			filteredFields = append(filteredFields, field)
+		} else if field.Name == "labels" && i == existingLabelsIdx {
+			// Skip old labels field, will add new one
+			continue
+		}
+	}
+	filteredFields = append(filteredFields, newLabelsField)
+	frame.Fields = filteredFields
+
+	return nil
+}
+
+// fieldValueToString converts a field value to its string representation for labels.
+func fieldValueToString(val any) string {
+	if val == nil {
+		return ""
+	}
+	switch v := val.(type) {
+	case string:
+		return v
+	case *string:
+		if v == nil {
+			return ""
+		}
+		return *v
+	case json.RawMessage:
+		return string(v)
+	case []byte:
+		return string(v)
+	case time.Time:
+		return v.Format(time.RFC3339Nano)
+	case *time.Time:
+		if v == nil {
+			return ""
+		}
+		return v.Format(time.RFC3339Nano)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 // assignFlattenedPath will flatten a nested map into a map with top level keys separated by dots.
